@@ -1,0 +1,80 @@
+const express = require('express');
+const axios = require('axios');
+const _ = require('lodash');
+
+const app = express();
+const port = process.env.PORT || 3000;
+
+// Define a memoization cache for data analysis
+const dataAnalysisCache = _.memoize(fetchAndAnalyzeBlogData, () => 'cacheKey', 300000); // Cache for 5 minutes
+
+app.use(express.json());
+
+// Define the route for fetching and analyzing blog data
+app.get('/api/blog-stats', async (req, res) => {
+  try {
+    // Fetch and analyze blog data (possibly from cache)
+    const analytics = await dataAnalysisCache();
+
+    // Respond with the statistics
+    res.json(analytics);
+  } catch (error) {
+    // Handle errors
+    console.error(error);
+    res.status(500).json({ error: 'An error occurred while fetching and analyzing blog data.' });
+  }
+});
+
+// Define the route for blog search
+app.get('/api/blog-search', async (req, res) => {
+  try {
+    const query = req.query.query.toLowerCase();
+
+    // Fetch and analyze blog data (possibly from cache)
+    const blogs = await dataAnalysisCache();
+
+    // Perform a case-insensitive search
+    const searchResults = blogs.filter((blog) =>
+      _.toLower(blog.title).includes(query)
+    );
+
+    res.json(searchResults);
+  } catch (error) {
+    // Handle errors
+    console.error(error);
+    res.status(500).json({ error: 'An error occurred while searching for blogs.' });
+  }
+});
+
+// Function to fetch and analyze blog data
+async function fetchAndAnalyzeBlogData() {
+  // Make the curl request to fetch blog data
+  const response = await axios.get('https://intent-kit-16.hasura.app/api/rest/blogs', {
+    headers: {
+      'x-hasura-admin-secret': '32qR4KmXOIpsGPQKMqEJHGJS27G5s7HdSKO3gdtQd2kv5e852SiYwWNfxkZOBuQ6',
+    },
+  });
+
+  // Extract the blog data from the response
+  const blogs = response.data;
+
+  // Perform data analysis
+  const totalBlogs = blogs.length;
+  const longestBlog = _.maxBy(blogs, 'title.length');
+  const blogsWithPrivacy = blogs.filter((blog) =>
+    _.toLower(blog.title).includes('privacy')
+  );
+  const uniqueBlogTitles = _.uniqBy(blogs, 'title');
+
+  return {
+    totalBlogs,
+    longestBlog: longestBlog.title,
+    blogsWithPrivacy: blogsWithPrivacy.length,
+    uniqueBlogTitles: uniqueBlogTitles.map((blog) => blog.title),
+  };
+}
+
+// Start the Express server
+app.listen(port, () => {
+  console.log(`Server is running on port ${port}`);
+});
